@@ -20,12 +20,14 @@ public class FilterDto {
 	private Integer totalRow;
 	private String category;
 	private String babyCategory;
-	private Long cursor;
+	private String searchAfterSort;
+	private Long searchAfterId;
+	private Integer page;
 
 	public void checkParameterValid() {
 		if (query == null || query.isEmpty())
 			throw new CustomException(ErrorCode.QUERY_NOT_FOUND);
 		totalRow = totalRow == null ? 10 : totalRow;
-		cursor = cursor == null ? 1 : cursor;
+		page = page == null ? 1 : page;
 	}
 }

@@ -2,6 +2,7 @@ package com.baechu.book.repository;
 
 import static com.baechu.elastic.custom.CustomQueryBuilders.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -13,21 +14,27 @@ import org.springframework.data.elasticsearch.core.query.NativeSearchQueryBuilde
 import org.springframework.stereotype.Repository;
 
 import com.baechu.book.dto.BookDto;
-import com.baechu.book.dto.CursorBookDto;
+import com.baechu.book.dto.BookListDto;
 import com.baechu.book.dto.FilterDto;
 import com.baechu.elastic.custom.CustomBoolQueryBuilder;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 @Repository
 @RequiredArgsConstructor
+@Getter
 public class ElasticRepository {
 
 	private final ElasticsearchOperations operations;
 
 	// 검색
-	public List<BookDto> searchByEs(FilterDto filter) {
+	public BookListDto searchByEsAfter(FilterDto filter) {
+
+		List<Object> searchAfter = initSearchAfter(filter.getSearchAfterSort(), filter.getSearchAfterId());
+
 		NativeSearchQuery build = new NativeSearchQueryBuilder()
+			.withMinScore(10f)
 			.withQuery(new CustomBoolQueryBuilder()
 				.must(multiMatchQuery(filter.getQuery(), "title", "author", "publish"))
 				.filter(matchQuery("category.keyword", filter.getCategory()))
@@ -38,27 +45,51 @@ public class ElasticRepository {
 				.should(matchPhraseQuery("title", filter.getQuery()))
 				.should(matchQuery("author", filter.getAuthor()))
 				.should(matchQuery("publish", filter.getPublish())))
-			// .withSearchAfter(getCursor(cursor))
+			.withSearchAfter(searchAfter)
 			.withSorts(sortQuery(filter.getSort()))
 			.build();
 
 		SearchHits<BookDto> search = operations.search(build, BookDto.class);
 		List<SearchHit<BookDto>> searchHits = search.getSearchHits();
 		System.out.println(search.getTotalHits());
-		List<BookDto> result = searchHits.stream().map(hit -> hit.getContent()).collect(Collectors.toList());
+		List<BookDto> bookDtoList = searchHits.stream().map(hit -> hit.getContent()).collect(Collectors.toList());
+
+		searchAfter = setSearchAfter(searchHits, filter);
+		String searchAfterSort = String.valueOf(searchAfter.get(0));
+		Long searchAfterId = Long.parseLong(String.valueOf(searchAfter.get(1)));
+
+		BookListDto result = new BookListDto(bookDtoList, searchAfterSort, searchAfterId, filter.getPage(), true);
 		return result;
 	}
 
 	/**
-	 * 커서 찾아서 페이징 하려고 했던 흔적입니다.
+	 * - ES의 SearchAfter 값을 결정하는 메서드. (SearchAfter는 mysql에서의 Cursor와 같은 개념이다.)
+	 * 	- initSearchAfter : 요청받은 searchAfter를 list에 입력하는 메서드
+	 * 	- setSearchAfter : 검색 결과에 따라 필요한 searchAfter를 반환하는 메서드
 	 */
-	// 커서 찾기
-	private void getCursor(Long id) {
-		// ES에서 id로 데이터 조회하기
-		NativeSearchQuery search = new NativeSearchQueryBuilder()
-			.withQuery(matchPhraseQuery("id", id + ""))
-			.build();
-		SearchHits<CursorBookDto> searchResult = operations.search(search, CursorBookDto.class);
-		// sort별로 커서 입력하기
+	private List<Object> initSearchAfter(String searchAfterSort, Long searchAfterId) {
+		List<Object> searchAfter = new ArrayList<>();
+
+		if (searchAfterSort == null || searchAfterId == null)
+			return null;
+
+		searchAfter.add(searchAfterSort);
+		searchAfter.add(searchAfterId);
+		return searchAfter;
 	}
+
+	private List<Object> setSearchAfter(List<SearchHit<BookDto>> searchHits, FilterDto filter) {
+		List<Object> lists = new ArrayList<>();
+		if (searchHits.size() == 0) {		// 검색 결과가 없는 경우
+			lists.add("-1");
+			lists.add("-1");
+			return lists;
+		} else if (searchHits.size() < filter.getTotalRow()) {		// 검색 결과가 총 개수보다 작은 경우
+			lists.add("0");
+			lists.add("-1");
+			return lists;
+		}
+		return searchHits.get(searchHits.size() - 1).getSortValues();
+	}
+
 }

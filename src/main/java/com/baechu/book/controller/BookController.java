@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
 import com.baechu.book.dto.BookListDto;
+import com.baechu.book.dto.BookRankDto;
 import com.baechu.book.dto.FilterDto;
 import com.baechu.book.entity.Book;
 import com.baechu.book.service.BookService;
@@ -34,15 +35,9 @@ public class BookController {
 	@GetMapping("/search")
 	public String searchByWord(Model model, @ParamToDto FilterDto filter) {
 		filter.checkParameterValid();
-		BookListDto result = bookService.searchByCursor(filter);
-		model.addAttribute("result", result);
-		return "search";
-	}
-
-	@GetMapping("/search/es")
-	public String searchByES(Model model, @ParamToDto FilterDto filter) {
-		filter.checkParameterValid();
-		BookListDto result = bookService.searchByCursor(filter);
+		BookListDto result = bookService.afterSearchByES(filter);
+		// mysql 검색 -> 서킷 브레이커 적용시 사용 예정
+		// BookListDto result = bookService.searchByCursor(filter);
 		model.addAttribute("result", result);
 		return "search";
 	}
@@ -50,7 +45,7 @@ public class BookController {
 	@GetMapping("/main")
 	public String bookList(Model model) {
 
-		List<Book> list = bookService.bookList();
+		List<BookRankDto> list = bookService.bookList();
 		model.addAttribute("list", list);
 
 		return "main";
